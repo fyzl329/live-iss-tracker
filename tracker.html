@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ISS Live 3D Tracker</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', sans-serif;
+      background-color: #0d1117;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    #video-background-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 0;
+      overflow: hidden;
+    }
+
+    #video-background-container iframe {
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      opacity: 0.6;
+    }
+
+    .content-overlay {
+      position: relative;
+      z-index: 10;
+      min-height: 100vh;
+      padding: 1rem;
+    }
+
+    #globe-container {
+      position: relative;
+      width: 100%;
+      max-width: 800px;
+      height: 700px;
+      margin: 0 auto;
+      border-radius: 16px;
+      overflow: hidden;
+      background: transparent;
+      cursor: grab;
+    }
+    
+    #globe-container:active {
+      cursor: grabbing;
+    }
+
+    #globe-container canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100% !important;
+      height: 100% !important;
+    }
+    
+    .info-card {
+      background: rgba(17, 24, 39, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 12px;
+      transition: all 0.3s ease;
+    }
+    
+    .info-card:hover {
+      border-color: rgba(59, 130, 246, 0.5);
+      box-shadow: 0 4px 20px rgba(59, 130, 246, 0.15);
+    }
+    
+    .data-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid rgba(75, 85, 99, 0.3);
+    }
+    
+    .data-row:last-child {
+      border-bottom: none;
+    }
+    
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 6px;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="video-background-container">
+  <iframe 
+    id="yt-iframe"
+    width="560" 
+    height="315" 
+    src="https://www.youtube.com/embed/fO9e9jnhYK8?autoplay=1&mute=1&controls=0&loop=1&playlist=fO9e9jnhYK8"
+    title="YouTube video player" 
+    frameborder="0" 
+    allow="autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+    allowfullscreen>
+  </iframe>
+    <canvas id="starfield-fallback"></canvas>
+  </div>
+
+  <footer class="fixed bottom-2 left-1/2 transform -translate-x-1/2 z-20 text-gray-500 text-xs opacity-60">
+    Made by M. Fayazul Haque
+  </footer>
+
+<div id="content-panel" class="content-overlay relative z-10 transition-opacity duration-500">
+  <div class="mx-auto max-w-6xl px-4 py-6">
+    
+    <header class="text-center mb-6">
+      <h1 class="text-4xl md:text-5xl font-bold text-white mb-2">
+        <span class="text-blue-400">ISS</span> Tracker
+      </h1>
+      <p class="text-gray-400 text-sm">Real-time orbital visualization with day/night cycles</p>
+    </header>
+
+    <div class="grid gap-4 lg:grid-cols-[1fr_320px]">
+      
+      <!-- Globe -->
+      <div class="info-card p-0 overflow-hidden">
+        <div id="globe-container" class="h-[500px] md:h-[600px]"></div>
+      </div>
+
+      <!-- Consolidated Info Panel -->
+      <div class="flex flex-col gap-4">
+        
+        <!-- Single Unified Card -->
+        <div class="info-card p-5">
+          
+          <!-- Your Location Section -->
+          <div class="mb-5">
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-sm font-semibold text-blue-300 uppercase tracking-wide">Your Location</h2>
+              <span id="user-status-dot" class="status-dot bg-yellow-400"></span>
+            </div>
+            <div class="space-y-2 text-sm">
+              <div class="data-row">
+                <span class="text-gray-400">Lat</span>
+                <span id="user-lat" class="font-mono text-blue-300">--</span>
+              </div>
+              <div class="data-row">
+                <span class="text-gray-400">Lon</span>
+                <span id="user-lon" class="font-mono text-blue-300">--</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ISS Section -->
+          <div class="mb-5 pt-5 border-t border-gray-700">
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-sm font-semibold text-red-300 uppercase tracking-wide">ISS Position</h2>
+              <span id="iss-status-dot" class="status-dot bg-green-400"></span>
+            </div>
+            <div class="space-y-2 text-sm">
+              <div class="data-row">
+                <span class="text-gray-400">Lat</span>
+                <span id="iss-lat" class="font-mono text-red-300">--</span>
+              </div>
+              <div class="data-row">
+                <span class="text-gray-400">Lon</span>
+                <span id="iss-lon" class="font-mono text-red-300">--</span>
+              </div>
+              <div class="data-row">
+                <span class="text-gray-400">Alt</span>
+                <span id="iss-alt" class="font-mono text-red-300">-- km</span>
+              </div>
+              <div class="data-row">
+                <span class="text-gray-400">Vel</span>
+                <span id="iss-vel" class="font-mono text-red-300">-- km/h</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Relative Position -->
+          <div class="pt-5 border-t border-gray-700">
+            <h2 class="text-sm font-semibold text-yellow-300 uppercase tracking-wide mb-3">Distance</h2>
+            <div class="space-y-2 text-sm">
+              <div class="data-row">
+                <span class="text-gray-400">Range</span>
+                <span id="distance-km" class="font-bold text-yellow-300">--</span>
+              </div>
+              <div class="data-row">
+                <span class="text-gray-400">Direction</span>
+                <span id="direction-relative" class="font-medium text-yellow-300">--</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Toggle Button -->
+          <button 
+            id="panel-toggle"
+            class="mt-6 w-full bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/50 text-blue-300 font-medium py-2 px-4 rounded-lg transition-all">
+            Hide Panel
+          </button>
+        </div>
+
+        <!-- Quick Info -->
+        <div class="info-card p-4 text-xs text-gray-400 text-center">
+          <p>Drag to orbit • Scroll/Pinch to zoom</p>
+          <p class="mt-1 opacity-70">Earth's 23.5° axial tilt simulated</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// Using global THREE object loaded from CDN
+
+// --- Constants ---
+const EARTH_RADIUS = 6371;
+const ISS_API = "https://api.wheretheiss.at/v1/satellites/25544";
+const EARTH_TEXTURE_URL = "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r129/examples/textures/planets/earth_atmos_4096.jpg";
+const EARTH_SPECULAR_URL = "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r129/examples/textures/planets/earth_specular_2048.jpg";
+const EARTH_NORMAL_URL = "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r129/examples/textures/planets/earth_normal_2048.jpg";
+const MIN_ZOOM = 1.5;
+const MAX_ZOOM = 5;
+const AXIAL_TILT = 23.4;
+
+// --- State ---
+let userLat = null, userLon = null;
+let scene, camera, renderer, earthGroup, earthMesh, issMarker, userMarker, sunLight, userSpotlight;
+let isDragging = false;
+let previousMousePosition = { x: 0, y: 0 };
+let initialPinchDistance = 0;
+let issData = { current: null, previous: null, lastUpdateTime: 0 };
+const solarDeclinationCache = { day: -1, declination: 0 };
+
+// --- DOM References ---
+const globeContainer = document.getElementById('globe-container');
+const userLatEl = document.getElementById('user-lat');
+const userLonEl = document.getElementById('user-lon');
+const userStatusDot = document.getElementById('user-status-dot');
+const issLatEl = document.getElementById('iss-lat');
+const issLonEl = document.getElementById('iss-lon');
+const issAltEl = document.getElementById('iss-alt');
+const issVelEl = document.getElementById('iss-vel');
+const issStatusDot = document.getElementById('iss-status-dot');
+const distanceEl = document.getElementById('distance-km');
+const directionEl = document.getElementById('direction-relative');
+
+// --- Utils ---
+const deg2rad = deg => deg * Math.PI / 180;
+const rad2deg = rad => rad * 180 / Math.PI;
+
+const getDistanceFromLatLonInKm = (lat1, lon1, lat2, lon2) => {
+    const dLat = deg2rad(lat2 - lat1);
+    const dLon = deg2rad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 +
+              Math.cos(deg2rad(lat1)) *
+              Math.cos(deg2rad(lat2)) *
+              Math.sin(dLon / 2) ** 2;
+    return EARTH_RADIUS * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const bearing = (lat1, lon1, lat2, lon2) => {
+    const dLon = deg2rad(lon2 - lon1);
+    const y = Math.sin(dLon) * Math.cos(deg2rad(lat2));
+    const x = Math.cos(deg2rad(lat1)) * Math.sin(deg2rad(lat2)) -
+              Math.sin(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.cos(dLon);
+    const brng = (rad2deg(Math.atan2(y, x)) + 360) % 360;
+    const dirs = ["N","NE","E","SE","S","SW","W","NW"];
+    return dirs[Math.round(brng / 45) % 8];
+};
+
+const latLonToCartesian = (lat, lon, radius) => {
+    const latRad = deg2rad(lat);
+    const lonRad = deg2rad(-lon);
+    const x = radius * Math.cos(latRad) * Math.cos(lonRad);
+    const y = radius * Math.sin(latRad);
+    const z = radius * Math.cos(latRad) * Math.sin(lonRad);
+    return new THREE.Vector3(x, y, z);
+};
+
+const getSunPosition = () => {
+    const now = new Date();
+    const startOfYear = new Date(now.getFullYear(), 0, 0);
+    const diff = now - startOfYear;
+    const currentDay = Math.floor(diff / 86400000);
+    
+    if (currentDay !== solarDeclinationCache.day) {
+        solarDeclinationCache.declination = -23.45 * Math.cos(deg2rad((360/365) * (currentDay + 10)));
+        solarDeclinationCache.day = currentDay;
+    }
+    const declination = solarDeclinationCache.declination;
+    
+    // Sun is always at 0° longitude in our coordinate system
+    // Earth rotates beneath it based on UTC time
+    const longitude = 0;
+    
+    return { lat: declination, lon: longitude };
+};
+
+// --- Geolocation ---
+const getUserLocation = () => {
+    if (!navigator.geolocation) {
+        userStatusDot.className = 'status-dot bg-red-400';
+        return;
+    }
+    navigator.geolocation.getCurrentPosition(pos => {
+        userLat = pos.coords.latitude;
+        userLon = pos.coords.longitude;
+        userLatEl.textContent = userLat.toFixed(4) + '°';
+        userLonEl.textContent = userLon.toFixed(4) + '°';
+        userStatusDot.className = 'status-dot bg-green-400';
+    }, err => {
+        userStatusDot.className = 'status-dot bg-red-400';
+        userLatEl.textContent = '0.0000°';
+        userLonEl.textContent = '0.0000°';
+    });
+};
+
+// --- Globe Init ---
+const initGlobe = () => {
+    scene = new THREE.Scene();
+    const w = globeContainer.clientWidth, h = globeContainer.clientHeight;
+    camera = new THREE.PerspectiveCamera(75, w / h, 0.1, 1000);
+    camera.position.z = 2.5;
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(w, h);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    globeContainer.appendChild(renderer.domElement);
+
+    earthGroup = new THREE.Group();
+    scene.add(earthGroup);
+    earthGroup.rotation.z = deg2rad(AXIAL_TILT);
+
+    const ambientLight = new THREE.AmbientLight(0x444444, 1);
+    scene.add(ambientLight);
+
+    sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    scene.add(sunLight);
+
+    const loader = new THREE.TextureLoader();
+    Promise.all([
+        loader.load(EARTH_TEXTURE_URL),
+        loader.load(EARTH_SPECULAR_URL),
+        loader.load(EARTH_NORMAL_URL)
+    ]).then(([color, spec, normal]) => {
+        const material = new THREE.MeshPhongMaterial({
+            map: color,
+            specularMap: spec,
+            normalMap: normal,
+            specular: 0x333333,
+            shininess: 15
+        });
+        earthMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 128, 128), material);
+        earthGroup.add(earthMesh);
+
+        // ISS marker (cone pointing in direction of travel)
+        const coneGeometry = new THREE.ConeGeometry(0.015, -0.03, 8);
+        const coneMaterial = new THREE.MeshBasicMaterial({ color: 0xff4757 });
+        issMarker = new THREE.Mesh(coneGeometry, coneMaterial);
+        earthGroup.add(issMarker);
+
+        userMarker = new THREE.Mesh(
+            new THREE.SphereGeometry(0.025, 16, 16),
+            new THREE.MeshBasicMaterial({ color: 0x2ed573 })
+        );
+        earthGroup.add(userMarker);
+        
+        userSpotlight = new THREE.PointLight(0x2ed573, 1.5, 0.3);
+        earthGroup.add(userSpotlight);
+
+    }).catch(err => {
+        console.error("Texture loading failed:", err);
+        earthMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 64),
+            new THREE.MeshPhongMaterial({ color: 0x01a3d2 }));
+        earthGroup.add(earthMesh);
+    }).finally(() => animateGlobe());
+
+    globeContainer.addEventListener('mousedown', onMouseDown);
+    globeContainer.addEventListener('mousemove', onMouseMove);
+    globeContainer.addEventListener('mouseup', onMouseUp);
+    globeContainer.addEventListener('mouseleave', onMouseUp);
+    globeContainer.addEventListener('touchstart', onTouchStart, { passive: false });
+    globeContainer.addEventListener('touchmove', onTouchMove, { passive: false });
+    globeContainer.addEventListener('touchend', onMouseUp);
+    globeContainer.addEventListener('wheel', onMouseWheel, { passive: false });
+    window.addEventListener('resize', onWindowResize);
+};
+
+// --- Event Handlers ---
+const onWindowResize = () => {
+    const w = globeContainer.clientWidth, h = globeContainer.clientHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+};
+
+const rotateCamera = (dx, dy) => {
+    const angle = -dx * 0.005;
+    const cosAngle = Math.cos(angle);
+    const sinAngle = Math.sin(angle);
+    const x = camera.position.x;
+    const z = camera.position.z;
+    camera.position.x = x * cosAngle + z * sinAngle;
+    camera.position.z = -x * sinAngle + z * cosAngle;
+    
+    const verticalAngle = dy * 0.005;
+    const distance = camera.position.length();
+    const currentVerticalAngle = Math.asin(camera.position.y / distance);
+    const newVerticalAngle = THREE.MathUtils.clamp(
+        currentVerticalAngle + verticalAngle,
+        -Math.PI / 2 + 0.1,
+        Math.PI / 2 - 0.1
+    );
+    
+    const horizontalDistance = distance * Math.cos(newVerticalAngle);
+    const currentHorizontalAngle = Math.atan2(camera.position.z, camera.position.x);
+    
+    camera.position.x = horizontalDistance * Math.cos(currentHorizontalAngle);
+    camera.position.y = distance * Math.sin(newVerticalAngle);
+    camera.position.z = horizontalDistance * Math.sin(currentHorizontalAngle);
+    
+    camera.lookAt(0, 0, 0);
+};
+
+const onMouseDown = e => { isDragging = true; previousMousePosition.x = e.clientX; previousMousePosition.y = e.clientY; };
+const onMouseUp = () => { isDragging = false; initialPinchDistance = 0; };
+const onMouseMove = e => { if (!isDragging) return; rotateCamera(e.clientX - previousMousePosition.x, e.clientY - previousMousePosition.y); previousMousePosition.x = e.clientX; previousMousePosition.y = e.clientY; };
+const onMouseWheel = e => { 
+    e.preventDefault(); 
+    const distance = camera.position.length();
+    const newDistance = THREE.MathUtils.clamp(distance + e.deltaY * 0.001, MIN_ZOOM, MAX_ZOOM);
+    const scale = newDistance / distance;
+    camera.position.multiplyScalar(scale);
+};
+const getTouchDistance = touches => Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+const onTouchStart = e => {
+    e.preventDefault();
+    if (e.touches.length === 1) { isDragging = true; previousMousePosition.x = e.touches[0].clientX; previousMousePosition.y = e.touches[0].clientY; }
+    else if (e.touches.length === 2) { isDragging = false; initialPinchDistance = getTouchDistance(e.touches); }
+};
+const onTouchMove = e => {
+    e.preventDefault();
+    if (isDragging && e.touches.length === 1) {
+        rotateCamera(e.touches[0].clientX - previousMousePosition.x, e.touches[0].clientY - previousMousePosition.y);
+        previousMousePosition.x = e.touches[0].clientX; previousMousePosition.y = e.touches[0].clientY;
+    } else if (e.touches.length === 2) {
+        const delta = getTouchDistance(e.touches) - initialPinchDistance;
+        const distance = camera.position.length();
+        const newDistance = THREE.MathUtils.clamp(distance - delta * 0.005, MIN_ZOOM, MAX_ZOOM);
+        const scale = newDistance / distance;
+        camera.position.multiplyScalar(scale);
+        initialPinchDistance = getTouchDistance(e.touches);
+    }
+};
+
+// --- ISS Data ---
+const fetchISSData = async () => {
+    try {
+        const res = await fetch(ISS_API);
+        if (!res.ok) throw new Error(`API Error: ${res.status}`);
+        const data = await res.json();
+
+        issLatEl.textContent = data.latitude.toFixed(4) + '°';
+        issLonEl.textContent = data.longitude.toFixed(4) + '°';
+        issAltEl.textContent = data.altitude.toFixed(1) + ' km';
+        issVelEl.textContent = data.velocity.toFixed(0) + ' km/h';
+        issStatusDot.className = 'status-dot bg-green-400';
+
+        if (userLat !== null && userLon !== null) {
+            const dist = getDistanceFromLatLonInKm(userLat, userLon, data.latitude, data.longitude);
+            distanceEl.textContent = dist.toLocaleString(undefined, { maximumFractionDigits: 0 }) + ' km';
+            directionEl.textContent = bearing(userLat, userLon, data.latitude, data.longitude);
+        }
+
+        // Store ISS data for interpolation
+        issData.previous = issData.current;
+        issData.current = {
+            lat: data.latitude,
+            lon: data.longitude,
+            position: latLonToCartesian(data.latitude, data.longitude, 1.064)
+        };
+        issData.lastUpdateTime = Date.now();
+
+        if (userMarker && userLat !== null) {
+            const userPos = latLonToCartesian(userLat, userLon, 1.01);
+            userMarker.position.copy(userPos);
+            
+            if (userSpotlight) {
+                userSpotlight.position.copy(userPos);
+            }
+        }
+
+    } catch (err) {
+        issStatusDot.className = 'status-dot bg-red-400';
+        console.error("ISS fetch error:", err.message);
+    }
+};
+
+// Update ISS marker position with interpolation
+const updateISSMarker = () => {
+    if (!issMarker || !issData.current) return;
+    
+    if (issData.previous && issData.current) {
+        // Interpolate between previous and current position
+        const timeSinceUpdate = Date.now() - issData.lastUpdateTime;
+        const interpolationFactor = Math.min(timeSinceUpdate / 2000, 1); // 2000ms = 2 seconds
+        
+        // Interpolate position
+        const interpolatedPos = new THREE.Vector3().lerpVectors(
+            issData.previous.position,
+            issData.current.position,
+            interpolationFactor
+        );
+        
+        issMarker.position.copy(interpolatedPos);
+        
+        // Calculate velocity direction (where ISS is heading)
+        const velocityDirection = new THREE.Vector3().subVectors(
+            issData.current.position,
+            issData.previous.position
+        ).normalize();
+        
+        // Radial direction (pointing away from Earth center)
+        const radialDirection = interpolatedPos.clone().normalize();
+        
+        // Make the cone point along the velocity direction
+        // The cone's default orientation has its tip pointing along +Y axis
+        // We want it to point along the velocity vector
+        
+        // Use lookAt to orient the cone
+        const tempObj = new THREE.Object3D();
+        tempObj.position.copy(interpolatedPos);
+        tempObj.lookAt(interpolatedPos.clone().add(velocityDirection));
+        
+        // Apply the rotation to the cone
+        issMarker.quaternion.copy(tempObj.quaternion);
+        
+        // Since cone points along +Y by default and we want it to point forward (+Z after lookAt),
+        // rotate -90 degrees around X axis
+        issMarker.rotateX(-Math.PI / 2);
+        
+    } else if (issData.current) {
+        // First update, just position it
+        issMarker.position.copy(issData.current.position);
+        
+        // Point radially outward from Earth
+        const radialDirection = issData.current.position.clone().normalize();
+        issMarker.lookAt(issData.current.position.clone().add(radialDirection));
+        issMarker.rotateX(-Math.PI / 2);
+    }
+};
+
+const updateSunPosition = () => {
+    if (!sunLight) return;
+    const sunPos = getSunPosition();
+    const sunDistance = 10;
+    const sunVector = latLonToCartesian(sunPos.lat, sunPos.lon, sunDistance);
+    sunLight.position.copy(sunVector);
+    sunLight.lookAt(0, 0, 0);
+};
+
+// --- Animation ---
+const animateGlobe = () => {
+    requestAnimationFrame(animateGlobe);
+    const now = new Date();
+    
+    // Earth rotation: At 12:00 UTC, the Prime Meridian (0°) should face the sun
+    // Calculate rotation so that 0° longitude faces the sun at solar noon
+    const hours = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
+    const timeBasedRotation = (hours - 12) * (Math.PI / 12); // 15° per hour in radians
+    
+    if (earthGroup) {
+        earthGroup.rotation.y = timeBasedRotation;
+    }
+    
+    updateSunPosition();
+    updateISSMarker(); // Update ISS position with interpolation every frame
+    renderer.render(scene, camera);
+};
+
+// --- Init ---
+getUserLocation();
+initGlobe();
+fetchISSData();
+setInterval(fetchISSData, 2000);
+
+// Keep only the original ISS live feed (no fallbacks)
+const ytIframe = document.getElementById('yt-iframe');
+const fallbackCanvas = document.getElementById('starfield-fallback');
+
+// Ensure we hide any fallback canvas and keep the original iframe visible
+if (fallbackCanvas) fallbackCanvas.style.display = 'none';
+if (ytIframe) {
+  ytIframe.style.display = 'block';
+  // optional: log when iframe loads
+  ytIframe.addEventListener('load', () => console.log('ISS live iframe loaded.'));
+}
+
+// Panel toggle
+let panelVisible = true;
+let mouseShakeDetector = { x: 0, y: 0, movements: 0, lastTime: 0 };
+
+document.getElementById('panel-toggle').addEventListener('click', function() {
+    const panel = document.getElementById('content-panel');
+    const button = this;
+    
+    if (panelVisible) {
+        panel.style.opacity = '0';
+        panel.style.pointerEvents = 'none';
+        button.textContent = 'Show Panel';
+        panelVisible = false;
+    } else {
+        panel.style.opacity = '1';
+        panel.style.pointerEvents = 'auto';
+        button.textContent = 'Hide Panel';
+        panelVisible = true;
+    }
+});
+
+// Mouse shake detection
+document.addEventListener('mousemove', function(e) {
+    const now = Date.now();
+    
+    if (now - mouseShakeDetector.lastTime < 100) {
+        const dx = Math.abs(e.clientX - mouseShakeDetector.x);
+        const dy = Math.abs(e.clientY - mouseShakeDetector.y);
+        
+        if (dx > 30 || dy > 30) {
+            mouseShakeDetector.movements++;
+            
+            if (mouseShakeDetector.movements > 3 && !panelVisible) {
+                const panel = document.getElementById('content-panel');
+                const button = document.getElementById('panel-toggle');
+                panel.style.opacity = '1';
+                panel.style.pointerEvents = 'auto';
+                button.textContent = 'Hide Panel';
+                panelVisible = true;
+                mouseShakeDetector.movements = 0;
+            }
+        }
+    } else {
+        mouseShakeDetector.movements = 0;
+    }
+    
+    mouseShakeDetector.x = e.clientX;
+    mouseShakeDetector.y = e.clientY;
+    mouseShakeDetector.lastTime = now;
+});
+</script>
+
+</body>
+</html>
