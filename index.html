@@ -104,6 +104,12 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0.5; }
     }
+
+    @media (max-width: 768px) {
+      .content-overlay {
+        padding: 0.5rem;
+        }
+    }
   </style>
 </head>
 
@@ -136,11 +142,11 @@
       <p class="text-gray-400 text-sm">Real-time orbital visualization with day/night cycles</p>
     </header>
 
-    <div class="grid gap-4 lg:grid-cols-[1fr_320px]">
+    <div class="grid gap-4 grid-cols-1 lg:grid-cols-[1fr_320px]">
       
       <!-- Globe -->
       <div class="info-card p-0 overflow-hidden">
-        <div id="globe-container" class="h-[500px] md:h-[600px]"></div>
+       <div id="globe-container" class="h-[300px] md:h-[600px] w-full"></div>
       </div>
 
       <!-- Consolidated Info Panel -->
@@ -667,4 +673,5 @@ document.addEventListener('mousemove', function(e) {
 </script>
 
 </body>
+
 </html>
