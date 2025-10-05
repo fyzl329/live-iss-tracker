@@ -104,12 +104,14 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0.5; }
     }
-
-    @media (max-width: 768px) {
-      .content-overlay {
-        padding: 0.5rem;
-        }
+    /* Limit panel aspect ratio on mobile */
+    @media (max-width: 1024px) {
+      .info-card {
+        max-height: calc(1.3 * 100%); /* 1.3x width */
+        overflow-y: auto;             /* scroll if content overflows */
+      }
     }
+
   </style>
 </head>
 
@@ -675,3 +677,4 @@ document.addEventListener('mousemove', function(e) {
 </body>
 
 </html>
+
