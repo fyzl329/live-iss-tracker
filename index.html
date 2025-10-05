@@ -672,9 +672,35 @@ document.addEventListener('mousemove', function(e) {
     mouseShakeDetector.y = e.clientY;
     mouseShakeDetector.lastTime = now;
 });
+
+// --- Mobile touch shake / swipe up to show panel ---
+let touchStartY = null;
+
+document.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 1) {
+        touchStartY = e.touches[0].clientY;
+    }
+});
+
+document.addEventListener('touchend', function(e) {
+    if (!panelVisible && touchStartY !== null) {
+        const touchEndY = e.changedTouches[0].clientY;
+        const deltaY = touchStartY - touchEndY;
+
+        // if swipe up fast enough (>50px)
+        if (deltaY > 50) {
+            const panel = document.getElementById('content-panel');
+            const button = document.getElementById('panel-toggle');
+            panel.style.opacity = '1';
+            panel.style.pointerEvents = 'auto';
+            button.textContent = 'Hide Panel';
+            panelVisible = true;
+        }
+    }
+    touchStartY = null;
+});
 </script>
 
 </body>
 
 </html>
-
